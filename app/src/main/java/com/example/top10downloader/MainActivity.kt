@@ -8,7 +8,10 @@ import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.widget.ListView
+import kotlinx.coroutines.*
 import java.net.URL
+import kotlin.coroutines.CoroutineContext
+import kotlin.math.log
 import kotlin.properties.Delegates
 
 class MainActivity : AppCompatActivity() {
@@ -111,44 +114,60 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        downloadData?.cancel(true)
+        downloadData?.cancel()
     }
 
     //    ************************Start AsyncTask(not supported any more) -> CoRoutines
     companion object {
         //        params-progress-result
+//        Convert AsyncTask into CoRoutine: https://stackoverflow.com/questions/55208748/asynctask-as-kotlin-coroutine
         private class DownloadData(context: Context, listView: ListView) :
-            AsyncTask<String, Void, String>() {
+           CoroutineScope {
             var propContext: Context by Delegates.notNull()
             var propListView: ListView by Delegates.notNull()
+
+            private var job:Job = Job()
+            override val coroutineContext: CoroutineContext
+                get() = Dispatchers.Main + job
 
             init {
                 propContext = context
                 propListView = listView
             }
 
+            fun cancel(){
+                job.cancel()
+                Log.d("TAG", "cancel: ****************CALLED**************")
+            }
+
+            fun execute(url:String) = launch {
+                Log.d("TAG", "execute: **************CALLED*********")
+                val result = doInBackground(url)
+                onPostExecute(result)
+            }
+
             //    get result from doInBackGround method
-            override fun onPostExecute(result: String) {
-                super.onPostExecute(result)
+            private  fun onPostExecute(result: String) {
+                Log.d("TAG", "onPostExecute: *************CALLED*****")
                 val parseApplication = ParseApplication()
                 parseApplication.parse(result)
-
                 val feedAdapter =
                     FeedAdapter(propContext, R.layout.list_record, parseApplication.application)
                 propListView.adapter = feedAdapter
             }
 
             //task in background
-            override fun doInBackground(vararg params: String?): String {
-                Log.d("TAG", "doInBackground: CALLED")
-                val rss = downloadXML(params[0])
+            private suspend  fun doInBackground(url:String): String = withContext(Dispatchers.IO) {
+                Log.d("TAG", "doInBackground with CoRoutine CALLED")
+                val rss = downloadXML(url)
                 if (rss.isEmpty()) {
-                    Log.e("TAG", "doInBackground: ERROR")
+                    Log.e("TAG", "doInBackground with CoRoutine ERROR")
                 }
-                return rss
+                return@withContext rss
             }
 
             private fun downloadXML(params: String?): String {
+                Log.d("TAG", "downloadXML: *****************CALLED***********")
                 return URL(params).readText()
             }
         }
